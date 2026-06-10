@@ -20,7 +20,7 @@ export default function WeekMap({
         return (
           <div
             key={label}
-            className={`pixel-card px-3 py-2 flex items-center justify-between text-sm ${
+            className={`pixel-inset px-3 py-2 flex items-center justify-between text-sm ${
               active ? "border-accent text-accent" : done ? "opacity-80" : "opacity-50"
             }`}
           >
@@ -35,7 +35,7 @@ export default function WeekMap({
         );
       })}
       <div
-        className={`pixel-card px-3 py-2 flex items-center justify-between text-sm ${
+        className={`pixel-inset px-3 py-2 flex items-center justify-between text-sm ${
           weekendUnlocked ? "border-freedom text-freedom" : "opacity-50"
         }`}
       >

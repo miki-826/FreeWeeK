@@ -93,12 +93,15 @@ export async function POST(request: Request) {
     JSON.stringify({ difficulty, enabledGameTypes })
   );
 
-  const tasks =
-    (aiResult && buildTasksFromAi(aiResult.tasks)) ??
-    buildLocalTasks(enabledGameTypes);
+  const aiTasks = aiResult.data ? buildTasksFromAi(aiResult.data.tasks) : null;
+  const tasks = aiTasks ?? buildLocalTasks(enabledGameTypes);
 
   return NextResponse.json({
     sessionId: crypto.randomUUID(),
     tasks,
+    source: aiTasks ? "ai" : "local",
+    aiError:
+      aiResult.error ??
+      (aiResult.data && !aiTasks ? "AIの応答が5日分の形式になっていません" : null),
   });
 }

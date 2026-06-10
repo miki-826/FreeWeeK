@@ -16,6 +16,7 @@ import {
 } from "@/features/game-engine/analysis";
 import { DAY_LABELS, daysUntilFreedom } from "@/features/game-engine/progress";
 import type {
+  AiSource,
   Ending,
   GameTask,
   Rank,
@@ -23,7 +24,23 @@ import type {
   TaskRecord,
 } from "@/types/game";
 
+type AiStatus = {
+  hasKey: boolean;
+  ok: boolean;
+  model: string;
+  keySource?: string | null;
+  baseUrl?: string;
+  error: string | null;
+};
+
+const SOURCE_LABELS: Record<AiSource, string> = {
+  ai: "🤖 AI採点",
+  local: "📋 ローカル採点（フォールバック）",
+  exact: "🧮 正答判定（ローカル）",
+};
+
 type Phase =
+  | "opening"
   | "home"
   | "map"
   | "intro"
@@ -53,6 +70,13 @@ const DAY_END_NARRATIONS = [
   "すべての平日ステージを突破した。\n土日の自由が解放される。",
 ];
 
+const OPENING_LINES = [
+  "月曜日 07:30。アラームが鳴った。",
+  "目の前には、月曜から金曜までの業務ダンジョン。",
+  "30秒クエストを突破して、自由ゲージを貯めろ。",
+  "金曜の夜、土日のロックが外れる。",
+];
+
 function loadSaved(): SavedState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -66,7 +90,7 @@ function loadSaved(): SavedState | null {
 }
 
 export default function GameApp() {
-  const [phase, setPhase] = useState<Phase>("home");
+  const [phase, setPhase] = useState<Phase>("opening");
   const [sessionId, setSessionId] = useState("");
   const [tasks, setTasks] = useState<GameTask[]>([]);
   const [dayIndex, setDayIndex] = useState(0);
@@ -79,11 +103,49 @@ export default function GameApp() {
   const [loading, setLoading] = useState(false);
   const [muted, setMuted] = useState(false);
   const [openReview, setOpenReview] = useState<number | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [openingStep, setOpeningStep] = useState(0);
   const startTimeRef = useRef(0);
   const submittedRef = useRef(false);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
 
   const task = tasks[dayIndex] as GameTask | undefined;
+
+  useEffect(() => {
+    if (phase !== "opening") return;
+    const interval = setInterval(() => {
+      setOpeningStep((step) => {
+        if (step >= OPENING_LINES.length - 1) {
+          clearInterval(interval);
+          return step;
+        }
+        return step + 1;
+      });
+    }, 900);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ai-status")
+      .then((res) => res.json())
+      .then((data: AiStatus) => {
+        if (!cancelled) setAiStatus(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAiStatus({
+            hasKey: false,
+            ok: false,
+            model: "-",
+            error: "AI状態の取得に失敗しました",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const hasSave = useSyncExternalStore(
     () => () => {},
@@ -312,7 +374,8 @@ export default function GameApp() {
     setRecords([]);
     setEnding(null);
     setLastResult(null);
-    setPhase("home");
+    setOpeningStep(0);
+    setPhase("opening");
   }, []);
 
   const ranks: (Rank | null)[] = DAY_LABELS.map(
@@ -321,7 +384,12 @@ export default function GameApp() {
   const analysis = analyzeWeek(records);
 
   return (
-    <main className="flex-1 flex items-center justify-center p-4">
+    <main
+      className={`game-stage phase-${phase} flex-1 flex items-center justify-center p-4`}
+    >
+      <div className="pixel-sky" aria-hidden="true" />
+      <div className="pixel-city" aria-hidden="true" />
+      <div className="scanlines" aria-hidden="true" />
       <button
         onClick={toggleMute}
         aria-label="BGM切り替え"
@@ -329,7 +397,48 @@ export default function GameApp() {
       >
         {muted ? "🔇" : "🔊"}
       </button>
-      <div className="w-full max-w-md space-y-4">
+      <div className="relative z-10 w-full max-w-md space-y-4">
+        {phase === "opening" && (
+          <div className="opening-stage pixel-card p-6 space-y-5 text-center animate-fade-in-up">
+            <div className="opening-scene" aria-hidden="true">
+              <div className="office-window">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="desk" />
+              <div className="worker-sprite" />
+              <div className="monitor-sprite" />
+              <div className="alarm-sprite">07:30</div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-accent animate-blink">BOOTING WEEK QUEST</p>
+              <h1 className="text-3xl leading-relaxed">
+                自由まで、
+                <br />
+                あと<span className="text-accent-warm text-4xl">5</span>日。
+              </h1>
+              <p className="text-sm opacity-80">
+                平日を攻略して、土日の自由を取り戻せ
+              </p>
+            </div>
+            <div className="opening-log text-left text-xs space-y-2">
+              {OPENING_LINES.slice(0, openingStep + 1).map((line) => (
+                <p key={line}>
+                  <span className="text-freedom">&gt;</span> {line}
+                </p>
+              ))}
+            </div>
+            <button
+              onClick={() => setPhase("home")}
+              className="pixel-btn w-full py-3 bg-accent-warm text-background text-lg"
+            >
+              PRESS START
+            </button>
+          </div>
+        )}
+
         {phase === "home" && (
           <div className="pixel-card p-6 space-y-6 text-center animate-fade-in-up">
             <p className="text-xs text-accent">07:30 ─ 月曜日の朝</p>
@@ -343,7 +452,7 @@ export default function GameApp() {
             </p>
             <div className="flex justify-center gap-2 text-sm">
               {["月", "火", "水", "木", "金"].map((d) => (
-                <span key={d} className="pixel-card px-2 py-1">
+                <span key={d} className="pixel-chip px-2 py-1">
                   {d} 🔒
                 </span>
               ))}
@@ -367,6 +476,27 @@ export default function GameApp() {
               )}
             </div>
             <p className="text-xs opacity-60">今日の業務クエストを開始します</p>
+            <div className="text-xs text-left pixel-inset p-2 space-y-1">
+              {!aiStatus ? (
+                <p className="opacity-60 animate-blink">AI接続を確認中...</p>
+              ) : aiStatus.ok ? (
+                <p className="text-freedom">
+                  🤖 AI接続：OK（{aiStatus.model} / キー元:{" "}
+                  {aiStatus.keySource}）
+                </p>
+              ) : (
+                <>
+                  <p className="text-accent-warm">
+                    {aiStatus.hasKey
+                      ? `🤖 AI接続：エラー（キー元: ${aiStatus.keySource}）`
+                      : "🤖 AI未設定：ローカルモードで動作中"}
+                  </p>
+                  {aiStatus.error && (
+                    <p className="opacity-70 break-all">{aiStatus.error}</p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -463,7 +593,7 @@ export default function GameApp() {
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
                     autoFocus
-                    className="w-full pixel-card p-3 bg-transparent text-lg outline-none focus:border-accent"
+                    className="w-full pixel-input p-3 bg-transparent text-lg outline-none focus:border-accent"
                     placeholder="数値を入力"
                   />
                 ) : (
@@ -472,7 +602,7 @@ export default function GameApp() {
                     onChange={(e) => setAnswer(e.target.value)}
                     autoFocus
                     rows={4}
-                    className="w-full pixel-card p-3 bg-transparent text-sm outline-none focus:border-accent resize-none"
+                    className="w-full pixel-input p-3 bg-transparent text-sm outline-none focus:border-accent resize-none"
                     placeholder="回答を入力"
                   />
                 )}
@@ -514,10 +644,20 @@ export default function GameApp() {
               </div>
             </div>
             <p className="text-sm text-accent">{lastResult.battleMessage}</p>
-            <div className="text-xs space-y-1 text-left pixel-card p-3">
+            <div className="text-xs space-y-1 text-left pixel-inset p-3">
               <p>👍 {lastResult.goodPoint}</p>
               <p>💡 {lastResult.improvement}</p>
             </div>
+            {lastResult.source && (
+              <p className="text-xs opacity-60">
+                採点方式：{SOURCE_LABELS[lastResult.source]}
+              </p>
+            )}
+            {lastResult.aiError && (
+              <p className="text-xs text-accent-warm break-all">
+                ⚠ AI採点に失敗したためローカル採点を使用：{lastResult.aiError}
+              </p>
+            )}
             <div>
               <p className="text-xs text-freedom mb-1">
                 自由ゲージ +{lastResult.freedomGain}%
@@ -588,13 +728,13 @@ export default function GameApp() {
               muted
               playsInline
               loop
-              className="w-full pixel-card !p-0"
+              className="w-full pixel-frame"
             />
             <div className="flex justify-center gap-3 text-sm">
-              <span className="pixel-card px-3 py-2 text-freedom animate-pop">
+              <span className="pixel-chip px-3 py-2 text-freedom animate-pop">
                 SATURDAY UNLOCKED
               </span>
-              <span className="pixel-card px-3 py-2 text-freedom animate-pop">
+              <span className="pixel-chip px-3 py-2 text-freedom animate-pop">
                 SUNDAY UNLOCKED
               </span>
             </div>
@@ -652,18 +792,18 @@ export default function GameApp() {
             </p>
             <FreedomGauge value={gauge} rainbow />
 
-            <div className="pixel-card p-3 space-y-2">
+            <div className="pixel-inset p-3 space-y-2">
               <p className="text-sm text-accent">📊 今週の総合評価</p>
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="pixel-card p-2">
+                <div className="pixel-inset p-2">
                   <p className="opacity-70">平均スコア</p>
                   <p className="text-lg">{analysis.averageScore}</p>
                 </div>
-                <div className="pixel-card p-2">
+                <div className="pixel-inset p-2">
                   <p className="opacity-70">クリア数</p>
                   <p className="text-lg">{analysis.clearCount}/5</p>
                 </div>
-                <div className="pixel-card p-2">
+                <div className="pixel-inset p-2">
                   <p className="opacity-70">最高の日</p>
                   <p className="text-lg">{analysis.bestDay.day.slice(0, 1)}</p>
                 </div>
@@ -684,13 +824,13 @@ export default function GameApp() {
               )}
             </div>
 
-            <div className="pixel-card p-3 space-y-2">
+            <div className="pixel-inset p-3 space-y-2">
               <p className="text-sm text-accent">📝 5日間の振り返り</p>
               <p className="text-xs opacity-60">
                 タップすると自分の回答と改善点を見返せます
               </p>
               {records.map((r, i) => (
-                <div key={r.day} className="pixel-card">
+                <div key={r.day} className="pixel-inset">
                   <button
                     onClick={() => setOpenReview(openReview === i ? null : i)}
                     className="w-full px-3 py-2 flex justify-between items-center text-xs"
@@ -708,7 +848,7 @@ export default function GameApp() {
                       <p className="opacity-70 whitespace-pre-wrap">
                         問題：{r.question}
                       </p>
-                      <p className="pixel-card p-2 whitespace-pre-wrap">
+                      <p className="pixel-inset p-2 whitespace-pre-wrap">
                         あなたの回答：{r.userAnswer || "（未回答）"}
                       </p>
                       <p>👍 {r.goodPoint}</p>
@@ -724,13 +864,13 @@ export default function GameApp() {
               )}
             </div>
 
-            <div className="pixel-card p-3 space-y-1 text-sm">
+            <div className="pixel-inset p-3 space-y-1 text-sm">
               <p className="text-accent">🌞 土曜日：{ending.saturdayTheme}</p>
               <p className="text-xs">朝：{ending.saturdayPlan.morning}</p>
               <p className="text-xs">昼：{ending.saturdayPlan.afternoon}</p>
               <p className="text-xs">夜：{ending.saturdayPlan.night}</p>
             </div>
-            <div className="pixel-card p-3 space-y-1 text-sm">
+            <div className="pixel-inset p-3 space-y-1 text-sm">
               <p className="text-accent">🌙 日曜日：{ending.sundayTheme}</p>
               <p className="text-xs">朝：{ending.sundayPlan.morning}</p>
               <p className="text-xs">昼：{ending.sundayPlan.afternoon}</p>
@@ -740,6 +880,19 @@ export default function GameApp() {
             <p className="text-center text-sm whitespace-pre-wrap">
               {ending.finalMessage}
             </p>
+            {ending.source && (
+              <p className="text-xs opacity-60 text-center">
+                プラン生成：
+                {ending.source === "ai"
+                  ? "🤖 AI生成"
+                  : "📋 ローカル生成（フォールバック）"}
+              </p>
+            )}
+            {ending.aiError && (
+              <p className="text-xs text-accent-warm break-all">
+                ⚠ {ending.aiError}
+              </p>
+            )}
             <button
               onClick={resetGame}
               className="pixel-btn w-full py-3 bg-accent text-background"

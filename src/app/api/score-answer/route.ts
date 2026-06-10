@@ -42,16 +42,21 @@ export async function POST(request: Request) {
   });
 
   if (LOCAL_SCORING_TYPES.includes(gameType)) {
-    return NextResponse.json(localResult);
+    return NextResponse.json({ ...localResult, source: "exact" });
   }
 
-  const aiResult = await callOpenAIJson<AiScore>(
+  const { data: aiResult, error: aiError } = await callOpenAIJson<AiScore>(
     SCORE_ANSWER_SYSTEM,
     JSON.stringify({ gameType, question, expectedAnswer, userAnswer })
   );
 
   if (!aiResult || typeof aiResult.score !== "number") {
-    return NextResponse.json(localResult);
+    return NextResponse.json({
+      ...localResult,
+      source: "local",
+      aiError:
+        aiError ?? (aiResult ? "AIの応答にscoreが含まれていません" : null),
+    });
   }
 
   const score = Math.min(100, Math.max(0, Math.round(aiResult.score)));
@@ -68,5 +73,5 @@ export async function POST(request: Request) {
     rewardItem: aiResult.rewardItem ?? localResult.rewardItem,
   };
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, source: "ai" });
 }

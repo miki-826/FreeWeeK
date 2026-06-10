@@ -16,7 +16,7 @@ export default function TimerBar({ remaining, timeLimit }: Props) {
           {remaining} 秒
         </span>
       </div>
-      <div className="h-3 w-full pixel-card !p-0 overflow-hidden">
+      <div className="h-3 w-full pixel-inset overflow-hidden">
         <div
           className={`h-full transition-all duration-300 ${
             danger ? "bg-danger" : warning ? "bg-accent-warm" : "bg-accent"

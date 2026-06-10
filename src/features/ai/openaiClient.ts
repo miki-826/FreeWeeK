@@ -1,19 +1,55 @@
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const BASE_URL = (
+  process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1"
+).replace(/\/$/, "");
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
+export type AiCallResult<T> = {
+  data: T | null;
+  error: string | null;
+};
+
+function resolveApiKey(): { key: string | null; source: string | null } {
+  if (process.env.FREEWEEK_OPENAI_API_KEY) {
+    return {
+      key: process.env.FREEWEEK_OPENAI_API_KEY,
+      source: "FREEWEEK_OPENAI_API_KEY",
+    };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return { key: process.env.OPENAI_API_KEY, source: "OPENAI_API_KEY" };
+  }
+  return { key: null, source: null };
+}
+
 export function hasOpenAIKey(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(resolveApiKey().key);
+}
+
+export function getAiConfig() {
+  const { key, source } = resolveApiKey();
+  return {
+    hasKey: Boolean(key),
+    keySource: source,
+    baseUrl: BASE_URL,
+    model: MODEL,
+  };
 }
 
 export async function callOpenAIJson<T>(
   systemPrompt: string,
   userPrompt: string
-): Promise<T | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+): Promise<AiCallResult<T>> {
+  const { key: apiKey } = resolveApiKey();
+  if (!apiKey) {
+    return {
+      data: null,
+      error:
+        "APIキーが設定されていません（FREEWEEK_OPENAI_API_KEY または OPENAI_API_KEY）",
+    };
+  }
 
   try {
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -30,15 +66,26 @@ export async function callOpenAIJson<T>(
       }),
     });
     if (!res.ok) {
-      console.error("OpenAI API error:", res.status, await res.text());
-      return null;
+      const body = await res.text();
+      const error = `AI APIエラー (HTTP ${res.status}, ${BASE_URL}): ${body.slice(0, 300)}`;
+      console.error(error);
+      return { data: null, error };
     }
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return JSON.parse(content) as T;
-  } catch (error) {
-    console.error("OpenAI API call failed:", error);
-    return null;
+    if (!content) {
+      return { data: null, error: "AI APIの応答にcontentがありません" };
+    }
+    try {
+      return { data: JSON.parse(content) as T, error: null };
+    } catch {
+      const error = `AI APIの応答がJSONとして解析できません: ${String(content).slice(0, 200)}`;
+      console.error(error);
+      return { data: null, error };
+    }
+  } catch (e) {
+    const error = `AI API（${BASE_URL}）への接続に失敗: ${e instanceof Error ? e.message : String(e)}`;
+    console.error(error);
+    return { data: null, error };
   }
 }

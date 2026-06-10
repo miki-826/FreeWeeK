@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const records: TaskRecord[] = Array.isArray(body.records) ? body.records : [];
   const clearRank = finalRankFromGauge(freedomGauge);
 
-  const aiResult = await callOpenAIJson<AiEnding>(
+  const { data: aiResult, error: aiError } = await callOpenAIJson<AiEnding>(
     GENERATE_ENDING_SYSTEM,
     JSON.stringify({ freedomGauge, clearRank, results, records })
   );
@@ -65,12 +65,18 @@ export async function POST(request: Request) {
     localEnding.analysisComment = `5日間の平均スコアは${analysis.averageScore}点、クリア${analysis.clearCount}回でした。${analysis.strength}は安定して得点できています。一方${analysis.weakness}が伸びしろです。${analysis.advice}`;
   }
   if (!aiResult?.saturdayPlan || !aiResult?.sundayPlan) {
-    return NextResponse.json(localEnding);
+    return NextResponse.json({
+      ...localEnding,
+      source: "local",
+      aiError:
+        aiError ?? (aiResult ? "AIの応答に土日プランが含まれていません" : null),
+    });
   }
 
   return NextResponse.json({
     ...localEnding,
     ...aiResult,
     clearRank,
+    source: "ai",
   });
 }

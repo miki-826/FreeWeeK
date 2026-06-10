@@ -32,12 +32,21 @@ http://localhost:3000 を開いてください。
 
 ### 環境変数（任意）
 
-`OPENAI_API_KEY` を設定すると、タスク生成・採点・エンディング生成にChatGPT APIを使用します。未設定でもローカルフォールバックで全機能が動作します。
+APIキーを設定すると、タスク生成・採点・エンディング生成にChatGPT APIを使用します。未設定でもローカルフォールバックで全機能が動作します。
 
 ```env
-OPENAI_API_KEY=sk-xxxxxxxx
+# .env.local
+FREEWEEK_OPENAI_API_KEY=sk-xxxxxxxx
 OPENAI_MODEL=gpt-4o-mini
 ```
+
+`FREEWEEK_OPENAI_API_KEY` はOSの環境変数 `OPENAI_API_KEY` より優先されます（Ollama等が `OPENAI_API_KEY` を別の値で設定している環境でも安全に上書きできます）。`OPENAI_BASE_URL` を設定すればOllamaなどのOpenAI互換APIにも接続できます。
+
+### AI接続の切り分け
+
+- ホーム画面下部に **AI接続ステータス**（OK / 未設定 / エラー内容・キーの取得元）が表示されます
+- `GET /api/ai-status` で疎通確認の生レスポンスを確認できます
+- 採点結果・エンディング画面に「AI採点かローカルフォールバックか」とAI失敗時の理由が表示されます
 
 ## テスト
 
