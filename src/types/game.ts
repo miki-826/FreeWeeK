@@ -58,6 +58,30 @@ export type DayResult = {
   rank: Rank;
 };
 
+export type TaskRecord = {
+  day: string;
+  gameType: GameCategory;
+  title: string;
+  question: string;
+  userAnswer: string;
+  score: number;
+  rank: Rank;
+  isClear: boolean;
+  feedback: string;
+  goodPoint: string;
+  improvement: string;
+};
+
+export type WeekAnalysis = {
+  averageScore: number;
+  clearCount: number;
+  bestDay: { day: string; label: string; score: number };
+  worstDay: { day: string; label: string; score: number };
+  strength: string;
+  weakness: string;
+  advice: string;
+};
+
 export type WeekendPlan = {
   morning: string;
   afternoon: string;
@@ -65,6 +89,7 @@ export type WeekendPlan = {
 };
 
 export type Ending = {
+  analysisComment?: string;
   endingTitle: string;
   clearRank: Rank;
   saturdayTheme: string;

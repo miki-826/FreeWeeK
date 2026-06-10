@@ -47,6 +47,7 @@ export const GENERATE_ENDING_SYSTEM = `あなたは仕事風ミニゲーム「�
 出力は必ずJSONのみで、以下の形式に従ってください。
 
 {
+  "analysisComment": "5日間の回答全体を踏まえた総評。良かった点と直すべき点を具体的に2〜3文で",
   "endingTitle": "エンディングの称号（例: 平日突破者）",
   "saturdayTheme": "土曜日のテーマ",
   "saturdayPlan": { "morning": "...", "afternoon": "...", "night": "..." },
@@ -59,4 +60,5 @@ export const GENERATE_ENDING_SYSTEM = `あなたは仕事風ミニゲーム「�
 ルール:
 - 成績が良いほど充実した自由プランにする
 - 成績が悪くても責めず、休息中心の優しいプランにする
-- 具体的で実行しやすい内容にする`;
+- 具体的で実行しやすい内容にする
+- analysisCommentは入力のrecords（各日の問題・回答・スコア）を根拠にする`;

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { callOpenAIJson } from "@/features/ai/openaiClient";
 import { GENERATE_ENDING_SYSTEM } from "@/features/ai/prompts";
+import { analyzeWeek } from "@/features/game-engine/analysis";
 import { finalRankFromGauge } from "@/features/game-engine/progress";
-import type { DayResult, Ending, Rank } from "@/types/game";
+import type { DayResult, Ending, Rank, TaskRecord } from "@/types/game";
 
 type AiEnding = Omit<Ending, "clearRank">;
 
@@ -50,14 +51,19 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const freedomGauge: number = Number(body.freedomGauge ?? 0);
   const results: DayResult[] = Array.isArray(body.results) ? body.results : [];
+  const records: TaskRecord[] = Array.isArray(body.records) ? body.records : [];
   const clearRank = finalRankFromGauge(freedomGauge);
 
   const aiResult = await callOpenAIJson<AiEnding>(
     GENERATE_ENDING_SYSTEM,
-    JSON.stringify({ freedomGauge, clearRank, results })
+    JSON.stringify({ freedomGauge, clearRank, results, records })
   );
 
+  const analysis = analyzeWeek(records);
   const localEnding = buildLocalEnding(freedomGauge);
+  if (records.length > 0 && !localEnding.analysisComment) {
+    localEnding.analysisComment = `5日間の平均スコアは${analysis.averageScore}点、クリア${analysis.clearCount}回でした。${analysis.strength}は安定して得点できています。一方${analysis.weakness}が伸びしろです。${analysis.advice}`;
+  }
   if (!aiResult?.saturdayPlan || !aiResult?.sundayPlan) {
     return NextResponse.json(localEnding);
   }

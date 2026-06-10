@@ -10,13 +10,17 @@ import {
 import FreedomGauge from "@/components/FreedomGauge";
 import TimerBar from "@/components/TimerBar";
 import WeekMap from "@/components/WeekMap";
+import {
+  analyzeWeek,
+  CATEGORY_LABELS,
+} from "@/features/game-engine/analysis";
 import { DAY_LABELS, daysUntilFreedom } from "@/features/game-engine/progress";
 import type {
-  DayResult,
   Ending,
   GameTask,
   Rank,
   ScoreResult,
+  TaskRecord,
 } from "@/types/game";
 
 type Phase =
@@ -28,6 +32,7 @@ type Phase =
   | "result"
   | "dayend"
   | "weekclear"
+  | "freedom"
   | "ending";
 
 type SavedState = {
@@ -35,10 +40,10 @@ type SavedState = {
   tasks: GameTask[];
   dayIndex: number;
   gauge: number;
-  results: DayResult[];
+  records: TaskRecord[];
 };
 
-const STORAGE_KEY = "freeweek-session-v1";
+const STORAGE_KEY = "freeweek-session-v2";
 
 const DAY_END_NARRATIONS = [
   "まだ週は始まったばかり。\nでも、最初の一歩は越えた。",
@@ -47,14 +52,6 @@ const DAY_END_NARRATIONS = [
   "あと少し。\n明日を越えれば、土日の扉が開く。",
   "すべての平日ステージを突破した。\n土日の自由が解放される。",
 ];
-
-const GAME_TYPE_LABELS: Record<string, string> = {
-  email_polish: "メール丁寧化",
-  calculation: "事務計算",
-  keigo: "敬語変換",
-  summary: "要約",
-  priority: "優先順位判断",
-};
 
 function loadSaved(): SavedState | null {
   try {
@@ -74,15 +71,17 @@ export default function GameApp() {
   const [tasks, setTasks] = useState<GameTask[]>([]);
   const [dayIndex, setDayIndex] = useState(0);
   const [gauge, setGauge] = useState(0);
-  const [results, setResults] = useState<DayResult[]>([]);
+  const [records, setRecords] = useState<TaskRecord[]>([]);
   const [lastResult, setLastResult] = useState<ScoreResult | null>(null);
   const [ending, setEnding] = useState<Ending | null>(null);
   const [answer, setAnswer] = useState("");
   const [remaining, setRemaining] = useState(30);
   const [loading, setLoading] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [openReview, setOpenReview] = useState<number | null>(null);
   const startTimeRef = useRef(0);
   const submittedRef = useRef(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
 
   const task = tasks[dayIndex] as GameTask | undefined;
 
@@ -92,6 +91,24 @@ export default function GameApp() {
     () => false
   );
 
+  const startBgm = useCallback(() => {
+    if (!bgmRef.current) {
+      const audio = new Audio("/sounds/clock-out.mp3");
+      audio.loop = true;
+      audio.volume = 0.35;
+      bgmRef.current = audio;
+    }
+    bgmRef.current.muted = muted;
+    bgmRef.current.play().catch(() => {});
+  }, [muted]);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      if (bgmRef.current) bgmRef.current.muted = !prev;
+      return !prev;
+    });
+  }, []);
+
   const persist = useCallback(
     (next: Partial<SavedState>) => {
       const state: SavedState = {
@@ -99,15 +116,16 @@ export default function GameApp() {
         tasks,
         dayIndex,
         gauge,
-        results,
+        records,
         ...next,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     },
-    [sessionId, tasks, dayIndex, gauge, results]
+    [sessionId, tasks, dayIndex, gauge, records]
   );
 
   const startWeek = useCallback(async () => {
+    startBgm();
     setLoading(true);
     try {
       const res = await fetch("/api/generate-tasks", {
@@ -120,7 +138,7 @@ export default function GameApp() {
       setTasks(data.tasks);
       setDayIndex(0);
       setGauge(0);
-      setResults([]);
+      setRecords([]);
       setEnding(null);
       localStorage.setItem(
         STORAGE_KEY,
@@ -129,25 +147,26 @@ export default function GameApp() {
           tasks: data.tasks,
           dayIndex: 0,
           gauge: 0,
-          results: [],
+          records: [],
         })
       );
       setPhase("map");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [startBgm]);
 
   const resumeWeek = useCallback(() => {
     const saved = loadSaved();
     if (!saved) return;
+    startBgm();
     setSessionId(saved.sessionId);
     setTasks(saved.tasks);
     setDayIndex(saved.dayIndex);
     setGauge(saved.gauge);
-    setResults(saved.results);
+    setRecords(saved.records ?? []);
     setPhase(saved.dayIndex >= DAY_LABELS.length ? "weekclear" : "map");
-  }, []);
+  }, [startBgm]);
 
   const startTask = useCallback(() => {
     if (!task) return;
@@ -199,22 +218,29 @@ export default function GameApp() {
         };
       }
       const nextGauge = Math.min(100, gauge + result.freedomGain);
-      const nextResults = [
-        ...results,
+      const nextRecords: TaskRecord[] = [
+        ...records,
         {
           day: task.dayLabel,
           gameType: task.gameType,
+          title: task.title,
+          question: task.question,
+          userAnswer: finalAnswer,
           score: result.score,
           rank: result.rank,
+          isClear: result.isClear,
+          feedback: result.feedback,
+          goodPoint: result.goodPoint,
+          improvement: result.improvement,
         },
       ];
       setLastResult(result);
       setGauge(nextGauge);
-      setResults(nextResults);
-      persist({ gauge: nextGauge, results: nextResults });
+      setRecords(nextRecords);
+      persist({ gauge: nextGauge, records: nextRecords });
       setPhase("result");
     },
-    [task, sessionId, gauge, results, persist]
+    [task, sessionId, gauge, records, persist]
   );
 
   useEffect(() => {
@@ -242,16 +268,9 @@ export default function GameApp() {
     setDayIndex(nextDay);
     persist({ dayIndex: nextDay });
     setPhase("dayend");
-    if (!audioRef.current) {
-      audioRef.current = new Audio("/sounds/clock-out.mp3");
-      audioRef.current.volume = 0.5;
-    }
-    audioRef.current.currentTime = 0;
-    audioRef.current.play().catch(() => {});
   }, [dayIndex, persist]);
 
   const goHome = useCallback(() => {
-    audioRef.current?.pause();
     if (dayIndex >= DAY_LABELS.length) {
       setPhase("weekclear");
     } else {
@@ -265,32 +284,51 @@ export default function GameApp() {
       const res = await fetch("/api/generate-ending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, freedomGauge: gauge, results }),
+        body: JSON.stringify({
+          sessionId,
+          freedomGauge: gauge,
+          results: records.map((r) => ({
+            day: r.day,
+            gameType: r.gameType,
+            score: r.score,
+            rank: r.rank,
+          })),
+          records,
+        }),
       });
       setEnding(await res.json());
+      setOpenReview(null);
       setPhase("ending");
     } finally {
       setLoading(false);
     }
-  }, [sessionId, gauge, results]);
+  }, [sessionId, gauge, records]);
 
   const resetGame = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setTasks([]);
     setDayIndex(0);
     setGauge(0);
-    setResults([]);
+    setRecords([]);
     setEnding(null);
     setLastResult(null);
     setPhase("home");
   }, []);
 
   const ranks: (Rank | null)[] = DAY_LABELS.map(
-    (_, i) => results[i]?.rank ?? null
+    (_, i) => records[i]?.rank ?? null
   );
+  const analysis = analyzeWeek(records);
 
   return (
     <main className="flex-1 flex items-center justify-center p-4">
+      <button
+        onClick={toggleMute}
+        aria-label="BGM切り替え"
+        className="pixel-btn fixed top-3 right-3 z-10 px-3 py-2 text-sm bg-background/70"
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
       <div className="w-full max-w-md space-y-4">
         {phase === "home" && (
           <div className="pixel-card p-6 space-y-6 text-center animate-fade-in-up">
@@ -369,7 +407,7 @@ export default function GameApp() {
               <p className="text-xs text-accent-warm animate-blink">MISSION</p>
               <h2 className="text-2xl">{task.title}</h2>
               <p className="text-xs opacity-70">
-                種目：{GAME_TYPE_LABELS[task.gameType] ?? task.gameType}
+                種目：{CATEGORY_LABELS[task.gameType] ?? task.gameType}
               </p>
             </div>
             <p className="text-sm">
@@ -520,7 +558,7 @@ export default function GameApp() {
               <p>
                 本日の評価：
                 <span className="text-accent-warm">
-                  {results[dayIndex - 1]?.rank}
+                  {records[dayIndex - 1]?.rank}
                 </span>
               </p>
               <FreedomGauge value={gauge} />
@@ -540,9 +578,9 @@ export default function GameApp() {
               WEEK CLEAR!
             </h2>
             <p className="text-sm">
-              平日を突破した！
+              金曜日の夜。
               <br />
-              土日の自由が解放されました
+              すべての平日クエストを突破した。
             </p>
             <video
               src="/movies/quest-clear.mp4"
@@ -562,17 +600,47 @@ export default function GameApp() {
             </div>
             <FreedomGauge value={gauge} rainbow />
             <button
+              onClick={() => setPhase("freedom")}
+              className="pixel-btn w-full py-3 rainbow-bar text-background text-lg"
+            >
+              🛏 眠りにつく
+            </button>
+          </div>
+        )}
+
+        {phase === "freedom" && (
+          <div className="pixel-card p-8 space-y-6 text-center animate-fade-in-up">
+            <p className="text-xs text-accent-warm">土曜日 09:42</p>
+            <p className="text-sm leading-relaxed opacity-90">
+              目が覚めた。
+              <br />
+              アラームは、鳴らなかった。
+              <br />
+              <br />
+              今日は会社に行かなくていい。
+              <br />
+              メールも、電話も、上司もいない。
+              <br />
+              <br />
+              この2日間は、すべて自分のものだ。
+            </p>
+            <h2 className="text-4xl text-accent-warm animate-pop">自由だ！</h2>
+            <FreedomGauge value={gauge} rainbow />
+            <button
               onClick={showEnding}
               disabled={loading}
               className="pixel-btn w-full py-3 rainbow-bar text-background text-lg disabled:opacity-50"
             >
-              {loading ? "AIが自由プランを生成中..." : "🌈 自由プランを見る"}
+              {loading ? "AIが自由プランを生成中..." : "🌈 自由な土日を始める"}
             </button>
           </div>
         )}
 
         {phase === "ending" && ending && (
           <div className="pixel-card p-6 space-y-4 animate-fade-in-up">
+            <p className="text-center text-xs text-freedom">
+              ─ 土日解放エンディング ─
+            </p>
             <h2 className="text-center text-2xl text-accent-warm">
               {ending.endingTitle}
             </h2>
@@ -583,6 +651,79 @@ export default function GameApp() {
               </span>
             </p>
             <FreedomGauge value={gauge} rainbow />
+
+            <div className="pixel-card p-3 space-y-2">
+              <p className="text-sm text-accent">📊 今週の総合評価</p>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="pixel-card p-2">
+                  <p className="opacity-70">平均スコア</p>
+                  <p className="text-lg">{analysis.averageScore}</p>
+                </div>
+                <div className="pixel-card p-2">
+                  <p className="opacity-70">クリア数</p>
+                  <p className="text-lg">{analysis.clearCount}/5</p>
+                </div>
+                <div className="pixel-card p-2">
+                  <p className="opacity-70">最高の日</p>
+                  <p className="text-lg">{analysis.bestDay.day.slice(0, 1)}</p>
+                </div>
+              </div>
+              <p className="text-xs">
+                💪 得意：<span className="text-freedom">{analysis.strength}</span>
+                （{analysis.bestDay.score}点）
+              </p>
+              <p className="text-xs">
+                📉 伸びしろ：
+                <span className="text-accent-warm">{analysis.weakness}</span>
+                （{analysis.worstDay.score}点）
+              </p>
+              {ending.analysisComment && (
+                <p className="text-xs opacity-90 leading-relaxed border-t border-foreground/20 pt-2">
+                  🤖 AI上司の総評：{ending.analysisComment}
+                </p>
+              )}
+            </div>
+
+            <div className="pixel-card p-3 space-y-2">
+              <p className="text-sm text-accent">📝 5日間の振り返り</p>
+              <p className="text-xs opacity-60">
+                タップすると自分の回答と改善点を見返せます
+              </p>
+              {records.map((r, i) => (
+                <div key={r.day} className="pixel-card">
+                  <button
+                    onClick={() => setOpenReview(openReview === i ? null : i)}
+                    className="w-full px-3 py-2 flex justify-between items-center text-xs"
+                  >
+                    <span>
+                      {r.isClear ? "✅" : "❌"} {r.day}：
+                      {CATEGORY_LABELS[r.gameType] ?? r.gameType}
+                    </span>
+                    <span className="text-accent-warm">
+                      {r.score}点 / {r.rank} {openReview === i ? "▲" : "▼"}
+                    </span>
+                  </button>
+                  {openReview === i && (
+                    <div className="px-3 pb-3 space-y-2 text-xs text-left animate-fade-in-up">
+                      <p className="opacity-70 whitespace-pre-wrap">
+                        問題：{r.question}
+                      </p>
+                      <p className="pixel-card p-2 whitespace-pre-wrap">
+                        あなたの回答：{r.userAnswer || "（未回答）"}
+                      </p>
+                      <p>👍 {r.goodPoint}</p>
+                      <p>💡 {r.improvement}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {analysis.advice && (
+                <p className="text-xs leading-relaxed border-t border-foreground/20 pt-2">
+                  🎯 来週へのアドバイス：{analysis.advice}
+                </p>
+              )}
+            </div>
+
             <div className="pixel-card p-3 space-y-1 text-sm">
               <p className="text-accent">🌞 土曜日：{ending.saturdayTheme}</p>
               <p className="text-xs">朝：{ending.saturdayPlan.morning}</p>
