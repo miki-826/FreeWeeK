@@ -38,7 +38,11 @@ export type GameTask = {
   scoringType: ScoringType;
 };
 
+export type AiSource = "ai" | "local" | "exact";
+
 export type ScoreResult = {
+  source?: AiSource;
+  aiError?: string | null;
   score: number;
   rank: Rank;
   isClear: boolean;
@@ -89,6 +93,8 @@ export type WeekendPlan = {
 };
 
 export type Ending = {
+  source?: AiSource;
+  aiError?: string | null;
   analysisComment?: string;
   endingTitle: string;
   clearRank: Rank;

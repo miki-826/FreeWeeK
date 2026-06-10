@@ -10,7 +10,7 @@ export default function FreedomGauge({ value, rainbow = false }: Props) {
         <span className="text-freedom">自由ゲージ</span>
         <span>{value}%</span>
       </div>
-      <div className="h-4 w-full pixel-card !p-0 overflow-hidden">
+      <div className="h-4 w-full pixel-inset overflow-hidden">
         <div
           className={`h-full transition-all duration-700 ${
             rainbow ? "rainbow-bar" : "bg-freedom"
