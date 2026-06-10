@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 自由まで、あと5日。（FreeWeeK）
 
-## Getting Started
+平日5日分の仕事風ミニゲームをAIが出題・採点し、5日間を突破すると土日の自由が解放されるWebゲームです。
 
-First, run the development server:
+![デザインモック](docs/design-mock.png)
+
+## 遊び方
+
+1. **出勤する** — AIが月曜〜金曜の5日分の業務クエストを生成します
+2. 毎日1つ、**30秒タスク**（メール丁寧化・事務計算・敬語変換・要約・優先順位判断）に挑戦します
+3. AI上司が回答を採点し、RPG風のフィードバックと自由ゲージを返します
+4. 5日間を突破すると**土日が解放**され、AIがあなた専用の自由な土日プランを生成します
+
+## 技術構成
+
+| 項目 | 使用技術 |
+| --- | --- |
+| フロントエンド | Next.js (App Router) / React |
+| デザイン | Tailwind CSS |
+| AI API | ChatGPT API（未設定時はローカル問題バンク・ローカル採点にフォールバック） |
+| テスト | Vitest |
+| デプロイ | Vercel |
+
+## セットアップ
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3000 を開いてください。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 環境変数（任意）
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`OPENAI_API_KEY` を設定すると、タスク生成・採点・エンディング生成にChatGPT APIを使用します。未設定でもローカルフォールバックで全機能が動作します。
 
-## Learn More
+```env
+OPENAI_API_KEY=sk-xxxxxxxx
+OPENAI_MODEL=gpt-4o-mini
+```
 
-To learn more about Next.js, take a look at the following resources:
+## テスト
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx vitest run
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ディレクトリ構成
 
-## Deploy on Vercel
+```text
+src/
+  app/
+    page.tsx              # ゲーム本体（状態マシン）
+    api/
+      generate-tasks/     # 5日分タスク生成
+      score-answer/       # 回答採点（計算・選択はローカル、文章はAI）
+      generate-ending/    # 土日エンディング生成
+  components/             # FreedomGauge / TimerBar / WeekMap
+  features/
+    games/                # ゲーム定義・ローカル問題バンク
+    ai/                   # OpenAIクライアント・プロンプト
+    game-engine/          # 採点・進行ロジック（テスト付き）
+  types/                  # 型定義
+docs/                     # 要件定義・UI設計・デザインモック
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## ゲームの追加方法
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `src/features/games/definitions.ts` に `GameDefinition` を追加
+2. `src/features/games/taskBank.ts` にローカル問題を追加
+3. 必要に応じて `src/features/ai/prompts.ts` と `src/features/game-engine/scoring.ts` を調整
