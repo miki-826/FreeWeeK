@@ -37,7 +37,8 @@ export function getAiConfig() {
 
 export async function callOpenAIJson<T>(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  options: { temperature?: number } = {}
 ): Promise<AiCallResult<T>> {
   const { key: apiKey } = resolveApiKey();
   if (!apiKey) {
@@ -58,7 +59,7 @@ export async function callOpenAIJson<T>(
       body: JSON.stringify({
         model: MODEL,
         response_format: { type: "json_object" },
-        temperature: 0.7,
+        temperature: options.temperature ?? 0.7,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

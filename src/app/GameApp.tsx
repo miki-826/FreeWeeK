@@ -105,6 +105,9 @@ export default function GameApp() {
   const [openReview, setOpenReview] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [openingStep, setOpeningStep] = useState(0);
+  const [taskGenerationError, setTaskGenerationError] = useState<string | null>(
+    null
+  );
   const startTimeRef = useRef(0);
   const submittedRef = useRef(false);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
@@ -189,6 +192,7 @@ export default function GameApp() {
   const startWeek = useCallback(async () => {
     startBgm();
     setLoading(true);
+    setTaskGenerationError(null);
     try {
       const res = await fetch("/api/generate-tasks", {
         method: "POST",
@@ -196,6 +200,12 @@ export default function GameApp() {
         body: JSON.stringify({ difficulty: "normal" }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data?.error ??
+            "AI問題生成に失敗しました。APIキーとモデル設定を確認してください。"
+        );
+      }
       setSessionId(data.sessionId);
       setTasks(data.tasks);
       setDayIndex(0);
@@ -213,6 +223,8 @@ export default function GameApp() {
         })
       );
       setPhase("map");
+    } catch (e) {
+      setTaskGenerationError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -476,6 +488,12 @@ export default function GameApp() {
               )}
             </div>
             <p className="text-xs opacity-60">今日の業務クエストを開始します</p>
+            {taskGenerationError && (
+              <div className="text-xs text-left pixel-inset p-2 space-y-1 text-danger">
+                <p>AI問題生成に失敗しました。</p>
+                <p className="break-all opacity-80">{taskGenerationError}</p>
+              </div>
+            )}
             <div className="text-xs text-left pixel-inset p-2 space-y-1">
               {!aiStatus ? (
                 <p className="opacity-60 animate-blink">AI接続を確認中...</p>
@@ -489,7 +507,7 @@ export default function GameApp() {
                   <p className="text-accent-warm">
                     {aiStatus.hasKey
                       ? `🤖 AI接続：エラー（キー元: ${aiStatus.keySource}）`
-                      : "🤖 AI未設定：ローカルモードで動作中"}
+                      : "🤖 AI未設定：問題生成にはAPIキーが必要です"}
                   </p>
                   {aiStatus.error && (
                     <p className="opacity-70 break-all">{aiStatus.error}</p>

@@ -32,7 +32,7 @@ http://localhost:3000 を開いてください。
 
 ### 環境変数（任意）
 
-APIキーを設定すると、タスク生成・採点・エンディング生成にChatGPT APIを使用します。未設定でもローカルフォールバックで全機能が動作します。
+APIキーを設定すると、タスク生成・採点・エンディング生成にChatGPT APIを使用します。問題内容は新しいプレイを開始するたびにAIが生成します。
 
 ```env
 # .env.local
@@ -41,6 +41,8 @@ OPENAI_MODEL=gpt-4o-mini
 ```
 
 `FREEWEEK_OPENAI_API_KEY` はOSの環境変数 `OPENAI_API_KEY` より優先されます（Ollama等が `OPENAI_API_KEY` を別の値で設定している環境でも安全に上書きできます）。`OPENAI_BASE_URL` を設定すればOllamaなどのOpenAI互換APIにも接続できます。
+
+問題生成はAI必須です。APIキー未設定やAI応答エラー時にローカル問題バンクへフォールバックしたい開発環境では、明示的に `FREEWEEK_ALLOW_LOCAL_TASK_FALLBACK=true` を設定してください。
 
 ### AI接続の切り分け
 
